@@ -1,14 +1,15 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { z } from 'zod';
-import { getEmcees, getEmceeBySlug } from '../db/queries/emcees';
+import { getEmcees, getEmceeBySlug, getStats } from '../db/queries/emcees';
+import { getYearlyStats } from '../db/queries/yearlyStats';
 
 // Validation schemas
 const emceesListSchema = z.object({
   division: z.string().optional(),
   search: z.string().optional(),
   page: z.coerce.number().int().min(1).default(1),
-  limit: z.coerce.number().int().min(1).max(100).default(20),
-  sort: z.enum(['name', 'year_joined', 'created_at']).default('name'),
+  limit: z.coerce.number().int().min(1).max(100).default(50),
+  sort: z.enum(['views_desc', 'views_asc', 'name_asc', 'name_desc', 'created_at']).default('views_desc'),
 });
 
 const emceeSlugSchema = z.object({
@@ -29,24 +30,19 @@ export async function emceesRoutes(fastify: FastifyInstance) {
             division: { type: 'string', description: 'Filter by division' },
             search: { type: 'string', description: 'Search by name' },
             page: { type: 'integer', minimum: 1, default: 1 },
-            limit: { type: 'integer', minimum: 1, maximum: 100, default: 20 },
-            sort: { type: 'string', enum: ['name', 'year_joined', 'created_at'], default: 'name' },
+            limit: { type: 'integer', minimum: 1, maximum: 100, default: 50 },
+            sort: { type: 'string', enum: ['views_desc', 'views_asc', 'name_asc', 'name_desc', 'created_at'], default: 'views_desc' },
           },
         },
         response: {
           200: {
             type: 'object',
             properties: {
-              data: { type: 'array' },
-              pagination: {
-                type: 'object',
-                properties: {
-                  page: { type: 'integer' },
-                  limit: { type: 'integer' },
-                  total: { type: 'integer' },
-                  totalPages: { type: 'integer' },
-                },
-              },
+              items: { type: 'array' },
+              page: { type: 'integer' },
+              limit: { type: 'integer' },
+              total: { type: 'integer' },
+              lastUpdated: { type: 'string' },
             },
           },
         },
@@ -97,7 +93,10 @@ export async function emceesRoutes(fastify: FastifyInstance) {
               reppin: { type: ['string', 'null'] },
               year_joined: { type: ['integer', 'null'] },
               bio: { type: ['string', 'null'] },
+              image_url: { type: ['string', 'null'] },
               source_url: { type: 'string' },
+              total_views: { type: ['integer', 'string', 'null'] },
+              last_updated: { type: ['string', 'null'] },
               created_at: { type: 'string' },
               updated_at: { type: 'string' },
             },
@@ -132,6 +131,87 @@ export async function emceesRoutes(fastify: FastifyInstance) {
           fastify.log.error(error);
           reply.status(500).send({ error: 'Internal server error' });
         }
+      }
+    }
+  );
+
+  // GET /v1/stats - Get aggregate statistics
+  fastify.get(
+    '/v1/stats',
+    {
+      schema: {
+        description: 'Get aggregate view statistics',
+        tags: ['stats'],
+        response: {
+          200: {
+            type: 'object',
+            properties: {
+              totalEmcees: { type: 'integer' },
+              totalViews: { type: 'integer' },
+              topDivision: {
+                type: ['object', 'null'],
+                properties: {
+                  name: { type: 'string' },
+                  views: { type: 'integer' },
+                },
+              },
+              lastUpdated: { type: ['string', 'null'] },
+              viewsByDivision: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  properties: {
+                    division: { type: 'string' },
+                    views: { type: 'integer' },
+                    emceeCount: { type: 'integer' },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+    async (_request: FastifyRequest, reply: FastifyReply) => {
+      try {
+        const stats = await getStats();
+        reply.send(stats);
+      } catch (error) {
+        fastify.log.error(error);
+        reply.status(500).send({ error: 'Internal server error' });
+      }
+    }
+  );
+
+  // GET /v1/stats/yearly - Get views by year for trend chart
+  fastify.get(
+    '/v1/stats/yearly',
+    {
+      schema: {
+        description: 'Get yearly view statistics for trend chart',
+        tags: ['stats'],
+        response: {
+          200: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                year: { type: 'integer' },
+                totalViews: { type: 'integer' },
+                videoCount: { type: 'integer' },
+              },
+            },
+          },
+        },
+      },
+    },
+    async (_request: FastifyRequest, reply: FastifyReply) => {
+      try {
+        const yearlyStats = await getYearlyStats();
+        reply.send(yearlyStats);
+      } catch (error) {
+        fastify.log.error(error);
+        reply.status(500).send({ error: 'Internal server error' });
       }
     }
   );

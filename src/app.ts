@@ -34,8 +34,8 @@ export async function buildApp() {
   await fastify.register(swagger, {
     openapi: {
       info: {
-        title: 'FlipStats API',
-        description: 'REST API for FlipTop Emcees data',
+        title: 'FlipTop Views Counter API',
+        description: 'REST API for FlipTop YouTube view statistics',
         version: '1.0.0',
       },
       servers: [
@@ -71,12 +71,13 @@ export async function buildApp() {
   // Root route
   fastify.get('/', async () => {
     return {
-      name: 'FlipStats API',
+      name: 'FlipTop Views Counter API',
       version: '1.0.0',
-      description: 'REST API for FlipTop Emcees data',
+      description: 'REST API for FlipTop YouTube view statistics',
       documentation: '/docs',
       endpoints: {
         health: '/health',
+        stats: '/v1/stats',
         emcees: '/v1/emcees',
         divisions: '/v1/divisions',
       },

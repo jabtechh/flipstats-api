@@ -1,5 +1,7 @@
+import 'dotenv/config';
 import { buildApp } from './app';
 import { closePool } from './db/pool';
+import { startScheduler, stopScheduler } from './scheduler';
 
 const PORT = parseInt(process.env.PORT || '3000', 10);
 const HOST = process.env.HOST || '0.0.0.0';
@@ -11,6 +13,9 @@ async function start() {
     await fastify.listen({ port: PORT, host: HOST });
     fastify.log.info(`Server listening on http://${HOST}:${PORT}`);
     fastify.log.info(`API Documentation available at http://${HOST}:${PORT}/docs`);
+    
+    // Start the YouTube sync scheduler
+    startScheduler();
   } catch (err) {
     fastify.log.error(err);
     process.exit(1);
@@ -21,6 +26,7 @@ async function start() {
   signals.forEach((signal) => {
     process.on(signal, async () => {
       fastify.log.info(`Received ${signal}, closing server gracefully`);
+      stopScheduler();
       await fastify.close();
       await closePool();
       process.exit(0);

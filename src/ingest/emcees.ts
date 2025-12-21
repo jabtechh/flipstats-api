@@ -165,6 +165,55 @@ async function scrapeEmceeProfile(listItem: EmceeListItem): Promise<ScrapeResult
     // Extract name from the h1 heading
     const name = $('h1').first().text().trim() || listItem.name;
 
+    // Extract profile image - try og:image meta tag first (most reliable)
+    let image_url: string | null = null;
+    
+    // Try og:image meta tag first
+    const ogImage = $('meta[property="og:image"]').attr('content');
+    if (ogImage && !ogImage.includes('placeholder') && !ogImage.includes('default')) {
+      image_url = ogImage.startsWith('http') ? ogImage : `${BASE_URL}${ogImage}`;
+    }
+    
+    // Fallback: Try multiple selectors for the profile image
+    if (!image_url) {
+      const imageSelectors = [
+        'img.emcee-image',
+        'img.profile-image',
+        '.emcee-profile img',
+        '.profile img',
+        'article img',
+        '.content img',
+        'main img',
+      ];
+      
+      for (const selector of imageSelectors) {
+        const $img = $(selector).first();
+        if ($img.length > 0) {
+          const src = $img.attr('src') || $img.attr('data-src');
+          if (src && !src.includes('placeholder') && !src.includes('default')) {
+            image_url = src.startsWith('http') ? src : `${BASE_URL}${src}`;
+            break;
+          }
+        }
+      }
+    }
+    
+    // Last fallback: find any image that looks like a profile photo
+    if (!image_url) {
+      $('img').each((_, el) => {
+        const src = $(el).attr('src') || $(el).attr('data-src');
+        const alt = $(el).attr('alt')?.toLowerCase() || '';
+        
+        if (src && 
+            (alt.includes(listItem.slug) || alt.includes(listItem.name.toLowerCase()) || 
+             src.includes('/emcees/') || src.includes('profile') || src.includes('photo') ||
+             src.includes('/storage/'))) {
+          image_url = src.startsWith('http') ? src : `${BASE_URL}${src}`;
+          return false; // break
+        }
+      });
+    }
+
     // Extract details from the info section
     // Format: "Hometown: Olongapo", "Division: Central Luzon", etc.
     let hometown: string | null = null;
@@ -237,10 +286,11 @@ async function scrapeEmceeProfile(listItem: EmceeListItem): Promise<ScrapeResult
       reppin,
       year_joined,
       bio,
+      image_url,
       source_url: listItem.profileUrl,
     };
 
-    logger.info({ slug: listItem.slug, emcee }, 'Successfully scraped emcee');
+    logger.info({ slug: listItem.slug, image_url, name }, 'Successfully scraped emcee');
 
     return {
       success: true,
