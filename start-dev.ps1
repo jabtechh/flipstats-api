@@ -5,7 +5,7 @@ Write-Host "🚀 Starting FlipStats API..." -ForegroundColor Green
 Write-Host ""
 
 # Set environment variables
-$env:DATABASE_URL = "postgresql://flipstats:flipstats_password@localhost:5432/flipstats_db"
+$env:DATABASE_URL = "postgresql://flipstats_user:flipstats_pass@localhost:5432/flipstats_db"
 $env:ADMIN_TOKEN = "your-secret-admin-token-change-this-in-production"
 $env:PORT = "3000"
 $env:NODE_ENV = "development"

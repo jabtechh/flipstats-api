@@ -81,45 +81,73 @@ function extractSlug(url: string): string {
 
 /**
  * Scrape the emcees directory page to get list of emcees
+ * Now handles pagination - scrapes all pages
  */
 async function scrapeEmceesDirectory(): Promise<EmceeListItem[]> {
-  logger.info('Scraping emcees directory');
+  logger.info('Scraping emcees directory (all pages)');
   
-  const html = await fetchWithRetry(EMCEES_URL);
-  const $ = cheerio.load(html);
+  const allEmcees: EmceeListItem[] = [];
+  const seenSlugs = new Set<string>();
   
-  const emcees: EmceeListItem[] = [];
-
-  // Parse the emcees list
-  // Adjust selectors based on actual HTML structure
-  $('.emcee-item, .emcee-card, a[href*="/emcees/"]').each((_, element) => {
-    const $el = $(element);
-    
-    // Try to find the profile link
-    const link = $el.attr('href') || $el.find('a[href*="/emcees/"]').attr('href');
-    
-    if (link && link.includes('/emcees/') && !link.endsWith('/emcees')) {
-      const fullUrl = link.startsWith('http') ? link : `${BASE_URL}${link}`;
-      const slug = extractSlug(fullUrl);
+  // Scrape all 9 pages
+  for (let page = 1; page <= 9; page++) {
+    try {
+      const url = `${EMCEES_URL}?page=${page}`;
+      logger.info({ page, url }, 'Scraping emcees page');
       
-      // Extract name - try multiple selectors
-      let name = $el.find('.emcee-name, .name, h2, h3').first().text().trim();
-      if (!name) {
-        name = $el.text().trim();
-      }
+      await randomDelay();
+      const html = await fetchWithRetry(url);
+      const $ = cheerio.load(html);
+      
+      let pageEmceesCount = 0;
 
-      if (slug && name) {
-        emcees.push({
-          slug,
-          name,
-          profileUrl: fullUrl,
-        });
+      // Parse the emcees list
+      $('a[href*="/emcees/"]').each((_, element) => {
+        const $el = $(element);
+        const link = $el.attr('href');
+        
+        if (link && link.includes('/emcees/') && !link.endsWith('/emcees') && !link.includes('/division/')) {
+          const fullUrl = link.startsWith('http') ? link : `${BASE_URL}${link}`;
+          const slug = extractSlug(fullUrl);
+          
+          // Skip if we've already seen this slug
+          if (!slug || seenSlugs.has(slug)) {
+            return;
+          }
+          
+          // Extract name - try multiple selectors
+          let name = $el.find('.emcee-name, .name, h2, h3').first().text().trim();
+          if (!name) {
+            name = $el.text().trim();
+          }
+
+          if (slug && name) {
+            seenSlugs.add(slug);
+            allEmcees.push({
+              slug,
+              name,
+              profileUrl: fullUrl,
+            });
+            pageEmceesCount++;
+          }
+        }
+      });
+
+      logger.info({ page, count: pageEmceesCount, total: allEmcees.length }, 'Scraped emcees from page');
+      
+      // If we didn't find any emcees on this page, we might have reached the end
+      if (pageEmceesCount === 0) {
+        logger.info({ page }, 'No emcees found on page, stopping pagination');
+        break;
       }
+    } catch (error) {
+      logger.error({ page, error: String(error) }, 'Failed to scrape emcees page');
+      // Continue to next page even if one fails
     }
-  });
+  }
 
-  logger.info({ count: emcees.length }, 'Found emcees in directory');
-  return emcees;
+  logger.info({ totalCount: allEmcees.length, pages: 9 }, 'Finished scraping all emcees pages');
+  return allEmcees;
 }
 
 /**
@@ -134,36 +162,72 @@ async function scrapeEmceeProfile(listItem: EmceeListItem): Promise<ScrapeResult
     const html = await fetchWithRetry(listItem.profileUrl);
     const $ = cheerio.load(html);
 
-    // Extract fields - adjust selectors based on actual HTML structure
-    // These are common patterns; you'll need to inspect the actual page
+    // Extract name from the h1 heading
+    const name = $('h1').first().text().trim() || listItem.name;
+
+    // Extract details from the info section
+    // Format: "Hometown: Olongapo", "Division: Central Luzon", etc.
+    let hometown: string | null = null;
+    let division: string | null = null;
+    let reppin: string | null = null;
+    let year_joined: number | null = null;
+
+    // Look for text containing the labels
+    $('*').each((_, element) => {
+      const text = $(element).text().trim();
+      
+      // Match "Hometown: <value>"
+      if (text.includes('Hometown:')) {
+        const match = text.match(/Hometown:\s*(.+?)(?:\n|$)/);
+        if (match) hometown = match[1].trim();
+      }
+      
+      // Match "Division: <value>"
+      if (text.includes('Division:')) {
+        const match = text.match(/Division:\s*(.+?)(?:\n|$)/);
+        if (match) division = match[1].trim();
+      }
+      
+      // Match "Reppin: <value>"
+      if (text.includes('Reppin:')) {
+        const match = text.match(/Reppin:\s*(.+?)(?:\n|$)/);
+        if (match) reppin = match[1].trim();
+      }
+      
+      // Match "Year Joined: <value>"
+      if (text.includes('Year Joined:')) {
+        const match = text.match(/Year Joined:\s*(\d{4})/);
+        if (match) year_joined = parseInt(match[1], 10);
+      }
+    });
+
+    // Extract bio - look for the paragraph after the Facebook link
+    let bio: string | null = null;
+    const $facebookLink = $('a[href*="facebook.com"]');
+    if ($facebookLink.length > 0) {
+      // Get the next sibling or parent's next sibling paragraph
+      let $bioElement = $facebookLink.parent().next('p');
+      if ($bioElement.length === 0) {
+        $bioElement = $facebookLink.closest('div').find('p').first();
+      }
+      if ($bioElement.length > 0) {
+        bio = $bioElement.text().trim();
+      }
+    }
     
-    const name = 
-      $('.emcee-name, .profile-name, h1.name').first().text().trim() ||
-      $('h1').first().text().trim() ||
-      listItem.name;
-
-    const division = 
-      $('.division, .emcee-division, [data-field="division"]').first().text().trim() ||
-      null;
-
-    const hometown = 
-      $('.hometown, .emcee-hometown, [data-field="hometown"]').first().text().trim() ||
-      null;
-
-    const reppin = 
-      $('.reppin, .emcee-reppin, [data-field="reppin"]').first().text().trim() ||
-      null;
-
-    // Year joined - extract number
-    const yearText = $('.year-joined, .emcee-year, [data-field="year"]').first().text().trim();
-    const yearMatch = yearText.match(/\d{4}/);
-    const year_joined = yearMatch ? parseInt(yearMatch[0], 10) : null;
-
-    // Bio - try multiple selectors
-    const bio = 
-      $('.bio, .emcee-bio, .description, .about, [data-field="bio"]').first().text().trim() ||
-      $('p').first().text().trim() ||
-      null;
+    // Fallback: find the longest paragraph
+    if (!bio) {
+      let longestParagraph = '';
+      $('p').each((_, el) => {
+        const text = $(el).text().trim();
+        if (text.length > longestParagraph.length) {
+          longestParagraph = text;
+        }
+      });
+      if (longestParagraph.length > 50) {
+        bio = longestParagraph;
+      }
+    }
 
     const emcee: EmceeInput = {
       slug: listItem.slug,
