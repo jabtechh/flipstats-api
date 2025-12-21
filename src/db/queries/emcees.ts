@@ -139,9 +139,10 @@ export async function getEmcees(
   const countResult = await pool.query<{ count: string }>(countQuery, values);
   const total = parseInt(countResult.rows[0].count, 10);
 
-  // Get paginated data
+  // Get paginated data (exclude bio for list view)
   const dataQuery = `
-    SELECT * FROM emcees
+    SELECT id, slug, name, division, hometown, reppin, year_joined, source_url, created_at, updated_at 
+    FROM emcees
     ${whereClause}
     ORDER BY ${orderBy} ${orderDirection}
     LIMIT $${paramIndex} OFFSET $${paramIndex + 1}
