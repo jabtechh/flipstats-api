@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FlipTop Emcees Directory</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        
+        header {
+            text-align: center;
+            color: white;
+            margin-bottom: 30px;
+        }
+        
+        h1 {
+            font-size: 3em;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+        
+        .subtitle {
+            font-size: 1.2em;
+            opacity: 0.9;
+        }
+        
+        .search-container {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            margin-bottom: 20px;
+        }
+        
+        .search-box {
+            width: 100%;
+            padding: 15px;
+            font-size: 16px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            transition: border-color 0.3s;
+        }
+        
+        .search-box:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        
+        .stats {
+            background: rgba(255,255,255,0.2);
+            color: white;
+            padding: 15px;
+            border-radius: 8px;
+            text-align: center;
+            margin-bottom: 20px;
+            backdrop-filter: blur(10px);
+        }
+        
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 20px;
+        }
+        
+        .emcee-card {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+            transition: transform 0.3s, box-shadow 0.3s;
+        }
+        
+        .emcee-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+        }
+        
+        .emcee-name {
+            font-size: 1.5em;
+            color: #667eea;
+            margin-bottom: 10px;
+        }
+        
+        .emcee-info {
+            color: #666;
+            margin: 5px 0;
+        }
+        
+        .emcee-info strong {
+            color: #333;
+        }
+        
+        .emcee-bio {
+            margin-top: 10px;
+            color: #555;
+            line-height: 1.5;
+        }
+        
+        .badge {
+            display: inline-block;
+            background: #667eea;
+            color: white;
+            padding: 5px 10px;
+            border-radius: 15px;
+            font-size: 0.8em;
+            margin: 5px 5px 5px 0;
+        }
+        
+        .loading {
+            text-align: center;
+            color: white;
+            font-size: 1.2em;
+            padding: 40px;
+        }
+        
+        .source-link {
+            display: inline-block;
+            margin-top: 10px;
+            color: #667eea;
+            text-decoration: none;
+            font-size: 0.9em;
+        }
+        
+        .source-link:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🎤 FlipTop Emcees</h1>
+            <p class="subtitle">Discover Filipino Battle Rap Artists</p>
+        </header>
+        
+        <div class="search-container">
+            <input 
+                type="text" 
+                class="search-box" 
+                id="search" 
+                placeholder="🔍 Search emcees by name..."
+            >
+        </div>
+        
+        <div class="stats" id="stats">
+            Loading...
+        </div>
+        
+        <div id="loading" class="loading" style="display: none;">
+            Loading emcees...
+        </div>
+        
+        <div class="grid" id="results"></div>
+    </div>
+    
+    <script>
+        const API_URL = 'http://localhost:3000';
+        let allEmcees = [];
+        
+        // Fetch all emcees on load
+        async function loadEmcees() {
+            document.getElementById('loading').style.display = 'block';
+            
+            try {
+                const response = await fetch(`${API_URL}/v1/emcees?limit=100`);
+                const data = await response.json();
+                allEmcees = data.data;
+                
+                updateStats(data.pagination.total);
+                displayEmcees(allEmcees);
+            } catch (error) {
+                console.error('Error loading emcees:', error);
+                document.getElementById('results').innerHTML = 
+                    '<p style="color: white; text-align: center;">Error loading data. Make sure the API is running at http://localhost:3000</p>';
+            }
+            
+            document.getElementById('loading').style.display = 'none';
+        }
+        
+        function updateStats(total) {
+            document.getElementById('stats').innerHTML = `
+                📊 Total Emcees: <strong>${total}</strong> | 
+                🔥 Powered by FlipStats API
+            `;
+        }
+        
+        function displayEmcees(emcees) {
+            const resultsDiv = document.getElementById('results');
+            
+            if (emcees.length === 0) {
+                resultsDiv.innerHTML = '<p style="color: white; text-align: center;">No emcees found</p>';
+                return;
+            }
+            
+            resultsDiv.innerHTML = emcees.map(emcee => `
+                <div class="emcee-card">
+                    <h3 class="emcee-name">${emcee.name}</h3>
+                    <p class="emcee-info"><strong>Slug:</strong> ${emcee.slug}</p>
+                    ${emcee.division ? `<span class="badge">${emcee.division}</span>` : ''}
+                    ${emcee.hometown ? `<span class="badge">📍 ${emcee.hometown}</span>` : ''}
+                    ${emcee.year_joined ? `<span class="badge">🗓️ ${emcee.year_joined}</span>` : ''}
+                    ${emcee.reppin ? `<p class="emcee-info"><strong>Reppin':</strong> ${emcee.reppin}</p>` : ''}
+                    ${emcee.bio ? `<p class="emcee-bio">${emcee.bio.substring(0, 150)}${emcee.bio.length > 150 ? '...' : ''}</p>` : ''}
+                    <a href="${emcee.source_url}" target="_blank" class="source-link">View on FlipTop →</a>
+                </div>
+            `).join('');
+        }
+        
+        function filterEmcees(query) {
+            if (!query) {
+                displayEmcees(allEmcees);
+                return;
+            }
+            
+            const filtered = allEmcees.filter(emcee => 
+                emcee.name.toLowerCase().includes(query.toLowerCase()) ||
+                (emcee.division && emcee.division.toLowerCase().includes(query.toLowerCase())) ||
+                (emcee.hometown && emcee.hometown.toLowerCase().includes(query.toLowerCase()))
+            );
+            
+            displayEmcees(filtered);
+        }
+        
+        // Search functionality
+        document.getElementById('search').addEventListener('input', (e) => {
+            filterEmcees(e.target.value);
+        });
+        
+        // Initial load
+        loadEmcees();
+    </script>
+</body>
+</html>

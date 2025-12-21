@@ -1,0 +1,26 @@
+name: Refresh Emcees Data
+
+on:
+  workflow_dispatch: # Manual trigger
+  schedule:
+    - cron: '0 2 1 1 *' # Run yearly on January 1st at 2 AM UTC
+
+jobs:
+  refresh-emcees:
+    name: Refresh Emcees Data
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Trigger emcees ingestion
+        run: |
+          curl -X POST ${{ secrets.API_URL }}/admin/refresh-emcees \
+            -H "X-Admin-Token: ${{ secrets.ADMIN_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            -w "\nHTTP Status: %{http_code}\n" \
+            --fail-with-body
+
+      - name: Notify on failure
+        if: failure()
+        run: |
+          echo "Emcees data refresh failed!"
+          # Add notification logic here (Slack, email, etc.)
