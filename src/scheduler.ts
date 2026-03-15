@@ -1,6 +1,9 @@
 import cron from 'node-cron';
 import pino from 'pino';
-import { ingestYouTubeViews } from './ingest/youtube';
+import { fetchFlipTopVideosFromAPI, calculateEmceeViews, calculateYearlyStats } from './ingest/youtube';
+import { getAllEmceeNames, updateEmceeViews, resetAllViews } from './db/queries/emcees';
+import { clearYearlyStats, upsertYearlyStats } from './db/queries/yearlyStats';
+import { pool } from './db/pool';
 
 const logger = pino({ name: 'scheduler' });
 
@@ -9,7 +12,7 @@ const logger = pino({ name: 'scheduler' });
 // "0 3 */2 * *" = At 03:00 every 2nd day
 const YOUTUBE_SYNC_SCHEDULE = process.env.YOUTUBE_SYNC_SCHEDULE || '0 3 */2 * *';
 
-let scheduledTask: cron.ScheduledTask | null = null;
+let scheduledTask: ReturnType<typeof cron.schedule> | null = null;
 
 export function startScheduler() {
   if (!process.env.YOUTUBE_API_KEY) {
@@ -21,24 +24,45 @@ export function startScheduler() {
 
   scheduledTask = cron.schedule(YOUTUBE_SYNC_SCHEDULE, async () => {
     logger.info('Starting scheduled YouTube views sync...');
-    
+
+    const client = await pool.connect();
     try {
-      const result = await ingestYouTubeViews();
-      
-      if (result.success) {
-        logger.info({
-          videosProcessed: result.videosProcessed,
-          emceesUpdated: result.emceesUpdated,
-          totalViews: result.totalViews,
-        }, 'Scheduled YouTube sync completed successfully');
-      } else {
-        logger.error({ error: result.error }, 'Scheduled YouTube sync failed');
+      await client.query('BEGIN');
+
+      const dbEmcees = await getAllEmceeNames();
+      const videos = await fetchFlipTopVideosFromAPI();
+      const viewsMap = calculateEmceeViews(videos, dbEmcees);
+      const yearlyStats = calculateYearlyStats(videos);
+
+      await resetAllViews(client);
+
+      let emceesUpdated = 0;
+      let totalViews = 0;
+      for (const [slug, views] of viewsMap.entries()) {
+        await updateEmceeViews(slug, views, client);
+        emceesUpdated++;
+        totalViews += views;
       }
+
+      await clearYearlyStats();
+      for (const [year, stats] of yearlyStats.entries()) {
+        await upsertYearlyStats(year, stats.views, stats.count);
+      }
+
+      await client.query('COMMIT');
+
+      logger.info({
+        videosProcessed: videos.length,
+        emceesUpdated,
+        totalViews,
+      }, 'Scheduled YouTube sync completed successfully');
     } catch (error) {
+      await client.query('ROLLBACK');
       logger.error({ error: String(error) }, 'Scheduled YouTube sync threw an error');
+    } finally {
+      client.release();
     }
   }, {
-    scheduled: true,
     timezone: 'Asia/Manila', // FlipTop is based in the Philippines
   });
 

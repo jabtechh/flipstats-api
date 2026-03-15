@@ -200,7 +200,7 @@ async function scrapeEmceeProfile(listItem: EmceeListItem): Promise<ScrapeResult
     
     // Last fallback: find any image that looks like a profile photo
     if (!image_url) {
-      $('img').each((_, el) => {
+      $('img').each((_, el): false | void => {
         const src = $(el).attr('src') || $(el).attr('data-src');
         const alt = $(el).attr('alt')?.toLowerCase() || '';
         
