@@ -24,13 +24,22 @@ function shouldUseSsl(): boolean {
   return DB_URL.includes('sslmode=require');
 }
 
+const isProduction = process.env.NODE_ENV === 'production';
+const poolMax = parseInt(process.env.PGPOOL_MAX || (isProduction ? '5' : '20'), 10);
+const idleTimeoutMillis = parseInt(process.env.PGPOOL_IDLE_TIMEOUT_MS || '30000', 10);
+const connectionTimeoutMillis = parseInt(
+  process.env.PGPOOL_CONNECTION_TIMEOUT_MS || (isProduction ? '10000' : '2000'),
+  10
+);
+
 // Create a connection pool
 export const pool = new Pool({
   connectionString: DB_URL,
   ssl: shouldUseSsl() ? { rejectUnauthorized: false } : undefined,
-  max: 20, // Maximum number of clients in the pool
-  idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 2000,
+  max: poolMax,
+  idleTimeoutMillis,
+  connectionTimeoutMillis,
+  keepAlive: true,
 });
 
 // Pool error handler
