@@ -64,22 +64,16 @@ interface EmceeViewsMap {
  * - "Emcee1 / Emcee2"
  */
 function parseEmceesFromTitle(title: string): string[] {
-  // Common separators in FlipTop video titles
-  const separators = [' vs ', ' VS ', ' Vs ', ' v ', ' x ', ' / '];
-  
-  for (const separator of separators) {
-    if (title.toLowerCase().includes(separator.toLowerCase())) {
-      const parts = title.split(new RegExp(separator, 'i'));
-      if (parts.length >= 2) {
-        // Take ALL emcees (supports Royal Rumble format with 3+ emcees)
-        return parts
-          .map((name) => cleanEmceeName(name))
-          .filter((name) => name.length > 0);
-      }
-    }
+  // Handle separators used in FlipTop titles: "vs", "v", "x", "/", with optional punctuation.
+  const matchupSeparator = /\s+(?:vs\.?|v\.?|x|\/)\s+/i;
+  if (!matchupSeparator.test(title)) {
+    return [];
   }
-  
-  return [];
+
+  return title
+    .split(matchupSeparator)
+    .map((name) => cleanEmceeName(name))
+    .filter((name) => name.length > 0);
 }
 
 /**
@@ -88,23 +82,32 @@ function parseEmceesFromTitle(title: string): string[] {
  */
 function cleanEmceeName(raw: string): string {
   let name = raw;
-  
-  // Remove common prefixes
-  name = name.replace(/^(FlipTop|FLIPTOP|Isabuhay)\s*[-:]?\s*/i, '');
-  
-  // Remove tournament/event info (e.g., "| Tournament Name")
+
+  // Remove tournament/event info and trailing metadata.
   name = name.split('|')[0];
-  name = name.split('(')[0]; // Remove (annotations)
-  name = name.split('[')[0]; // Remove [annotations]
-  
-  // Remove trailing info like dates, venues
+  name = name.split('(')[0];
+  name = name.split('[')[0];
   name = name.split('@')[0];
   name = name.split('#')[0];
-  
-  // Trim whitespace
-  name = name.trim();
-  
+
+  // Remove common prefix noise often present in channel titles.
+  name = name.replace(/^(?:flip\s*top|fliptop)\b[^a-z0-9]*?/i, '');
+  name = name.replace(/^(?:battle\s*league|battle\s*rap\s*league|presents?)\b[^a-z0-9]*?/i, '');
+  name = name.replace(/^(?:isabuhay|dos\s*por\s*dos|ahon)\b[^a-z0-9]*?/i, '');
+
+  // Strip leading/trailing punctuation and compress spaces.
+  name = name.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, '');
+  name = name.replace(/\s{2,}/g, ' ').trim();
+
   return name;
+}
+
+function normalizeEmceeName(name: string): string {
+  return name
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, '');
 }
 
 /**
@@ -115,18 +118,21 @@ function matchEmceeToDatabase(
   extractedName: string,
   dbEmcees: Array<{ slug: string; name: string }>
 ): string | null {
-  const normalized = extractedName.toLowerCase().trim();
+  const normalized = normalizeEmceeName(extractedName);
+  if (!normalized) {
+    return null;
+  }
   
   // First try exact match (case-insensitive)
   for (const emcee of dbEmcees) {
-    if (emcee.name.toLowerCase() === normalized) {
+    if (normalizeEmceeName(emcee.name) === normalized) {
       return emcee.slug;
     }
   }
   
   // Try partial match (extracted name is contained in DB name or vice versa)
   for (const emcee of dbEmcees) {
-    const dbName = emcee.name.toLowerCase();
+    const dbName = normalizeEmceeName(emcee.name);
     if (dbName.includes(normalized) || normalized.includes(dbName)) {
       return emcee.slug;
     }
