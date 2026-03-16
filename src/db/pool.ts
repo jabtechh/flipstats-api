@@ -10,9 +10,24 @@ if (!DATABASE_URL) {
   throw new Error('DATABASE_URL environment variable is required');
 }
 
+const DB_URL = DATABASE_URL;
+
+function shouldUseSsl(): boolean {
+  if (process.env.PGSSLMODE === 'require') {
+    return true;
+  }
+
+  if (process.env.NODE_ENV === 'production') {
+    return true;
+  }
+
+  return DB_URL.includes('sslmode=require');
+}
+
 // Create a connection pool
 export const pool = new Pool({
-  connectionString: DATABASE_URL,
+  connectionString: DB_URL,
+  ssl: shouldUseSsl() ? { rejectUnauthorized: false } : undefined,
   max: 20, // Maximum number of clients in the pool
   idleTimeoutMillis: 30000,
   connectionTimeoutMillis: 2000,
